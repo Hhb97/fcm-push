@@ -1,0 +1,15 @@
+# 构建产物
+target/
+
+# 本地数据（设备 token）
+data/
+
+# 服务账号私钥：绝不入库
+*service-account*.json
+*firebase-adminsdk*.json
+*-key.json
+
+# IDE
+.idea/
+*.iml
+.vscode/

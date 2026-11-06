@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FCM 推送</title>
+<style>
+  :root { --bg:#f5f5f7; --card:#fff; --text:#1d1d1f; --sub:#6e6e73; --line:#e5e5ea; --blue:#0a84ff; --green:#30a46c; --red:#e5484d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#000; --card:#1c1c1e; --text:#f5f5f7; --sub:#98989d; --line:#38383a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--sub); }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border-radius:14px; padding:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  label { display:block; font-size:12px; color:var(--sub); margin:10px 0 4px; }
+  input, textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:var(--text); font:inherit; }
+  textarea { min-height:70px; resize:vertical; }
+  button { border:0; border-radius:8px; padding:8px 14px; font:inherit; cursor:pointer; background:var(--blue); color:#fff; }
+  button.ghost { background:transparent; color:var(--blue); border:1px solid var(--line); }
+  button.danger { background:transparent; color:var(--red); padding:4px 8px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > input { flex:1; }
+  .status { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; }
+  .ok { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+  .bad { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
+  .device { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .device:last-child { border-bottom:0; }
+  .device .name { font-weight:600; }
+  .device .tok { color:var(--sub); font-family: ui-monospace, Consolas, monospace; font-size:12px; word-break:break-all; }
+  .msg { margin-top:10px; min-height:20px; }
+  .msg.err { color:var(--red); }
+  .msg.good { color:var(--green); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--sub); font-weight:500; }
+  .full { grid-column: 1 / -1; }
+  .check { display:flex; align-items:center; gap:6px; margin-top:10px; color:var(--sub); font-size:13px; }
+  .check input { width:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>FCM 推送</h1>
+  <div class="sub">本地推送服务 · <span id="status" class="status bad">检查中…</span> <span id="project"></span></div>
+
+  <div class="card" style="margin-top:16px" id="configCard">
+    <h2>服务账号私钥</h2>
+    <div class="sub">Firebase 控制台 → 项目设置 → 服务账号 → 生成新的私钥。文件只在本机读取，不会上传到别处。</div>
+    <div class="row" style="margin-top:10px">
+      <input id="credPath" placeholder="例如 C:\Users\me\keys\hardwarelens-test-firebase-adminsdk.json">
+      <button id="credBtn">加载</button>
+    </div>
+    <div id="credMsg" class="msg"></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>设备</h2>
+      <div id="devices"><div class="sub">还没有设备</div></div>
+      <label>名称</label>
+      <input id="devName" placeholder="例如 我的手机">
+      <label>Token（在 App「关于 → 消息推送」里复制）</label>
+      <textarea id="devToken" placeholder="粘贴设备 token"></textarea>
+      <div style="margin-top:10px"><button id="addBtn" class="ghost">添加设备</button></div>
+      <div id="devMsg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>发送</h2>
+      <label>标题</label>
+      <input id="title" value="HardwareLens 推送测试">
+      <label>正文</label>
+      <textarea id="body">这是从本地 Java 服务发出的推送。</textarea>
+      <label>附加数据（可选，每行 key=value）</label>
+      <textarea id="data" placeholder="type=alert&#10;level=high" style="min-height:50px"></textarea>
+      <label>主题（可选：填写后发给订阅该主题的设备，忽略左侧勾选）</label>
+      <input id="topic" placeholder="例如 news">
+      <div class="check"><input type="checkbox" id="dataOnly"><span>只发数据（不带通知字段：App 在后台也会回调，由 App 自己显示）</span></div>
+      <div style="margin-top:12px"><button id="sendBtn">发送给勾选的设备</button></div>
+      <div id="sendMsg" class="msg"></div>
+    </div>
+
+    <div class="card full">
+      <h2>发送记录 <span class="sub" style="font-weight:400">（最近 200 条，重启清空）</span></h2>
+      <table>
+        <thead><tr><th>时间</th><th>标题</th><th>目标</th><th>结果</th></tr></thead>
+        <tbody id="history"><tr><td colspan="4" class="sub">还没有发送</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function api(method, url, body) {
+  const res = await fetch(url, { method, headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status));
+  return data;
+}
+function show(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'good' : 'err'); }
+
+async function loadStatus() {
+  const s = await api('GET', '/api/status');
+  $('status').textContent = s.ready ? '已就绪' : '未配置服务账号';
+  $('status').className = 'status ' + (s.ready ? 'ok' : 'bad');
+  $('project').textContent = s.projectId ? '· 项目 ' + s.projectId : '';
+}
+
+async function loadDevices() {
+  const list = await api('GET', '/api/devices');
+  $('devices').innerHTML = list.length ? list.map(d => `
+    <div class="device">
+      <input type="checkbox" class="pick" value="${esc(d.id)}" checked style="width:auto">
+      <div style="flex:1;min-width:0">
+        <div class="name">${esc(d.name)}</div>
+        <div class="tok">${esc(d.token.slice(0, 12))}…${esc(d.token.slice(-8))}</div>
+      </div>
+      <button class="danger" data-del="${esc(d.id)}">删除</button>
+    </div>`).join('') : '<div class="sub">还没有设备</div>';
+}
+
+async function loadHistory() {
+  const list = await api('GET', '/api/history');
+  $('history').innerHTML = list.length ? list.map(o => {
+    const ok = o.results.filter(r => r.success).length, total = o.results.length;
+    const errs = o.results.filter(r => !r.success).map(r => `<div class="sub">${esc(r.target)}：${esc(r.errorCode)} ${esc(r.error)}</div>`).join('');
+    return `<tr><td>${new Date(o.at).toLocaleString()}</td><td>${esc(o.title)}</td><td>${esc(o.target)}</td>
+      <td><span class="status ${ok === total ? 'ok' : 'bad'}">${ok}/${total} 成功</span>${errs}</td></tr>`;
+  }).join('') : '<tr><td colspan="4" class="sub">还没有发送</td></tr>';
+}
+
+function parseData(text) {
+  const out = {};
+  text.split('\n').map(l => l.trim()).filter(Boolean).forEach(l => {
+    const i = l.indexOf('=');
+    if (i > 0) out[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+  });
+  return out;
+}
+
+$('credBtn').onclick = async () => {
+  try { await api('POST', '/api/config', { credentialsPath: $('credPath').value }); show($('credMsg'), '已加载', true); await loadStatus(); }
+  catch (e) { show($('credMsg'), e.message, false); }
+};
+
+$('addBtn').onclick = async () => {
+  try {
+    await api('POST', '/api/devices', { name: $('devName').value, token: $('devToken').value });
+    $('devName').value = ''; $('devToken').value = '';
+    show($('devMsg'), '已添加', true); await loadDevices();
+  } catch (e) { show($('devMsg'), e.message, false); }
+};
+
+$('devices').onclick = async e => {
+  const id = e.target.dataset?.del;
+  if (!id || !confirm('删除这台设备？')) return;
+  try { await api('DELETE', '/api/devices/' + id); await loadDevices(); } catch (err) { show($('devMsg'), err.message, false); }
+};
+
+$('sendBtn').onclick = async () => {
+  const btn = $('sendBtn'); btn.disabled = true;
+  try {
+    const common = { title: $('title').value, body: $('body').value, data: parseData($('data').value), dataOnly: $('dataOnly').checked };
+    const topic = $('topic').value.trim();
+    const outcome = topic
+      ? await api('POST', '/api/push', { ...common, topic })
+      : await api('POST', '/api/push/devices', { ...common, deviceIds: [...document.querySelectorAll('.pick:checked')].map(c => c.value) });
+    const ok = outcome.results.filter(r => r.success).length, total = outcome.results.length;
+    show($('sendMsg'), ok === total ? `已发送：${ok}/${total} 成功` : `${ok}/${total} 成功，失败原因见发送记录`, ok === total);
+  } catch (e) { show($('sendMsg'), e.message, false); }
+  finally { btn.disabled = false; loadHistory(); }
+};
+
+loadStatus().catch(e => { $('status').textContent = '服务未响应'; });
+loadDevices(); loadHistory();
+</script>
+</body>
+</html>

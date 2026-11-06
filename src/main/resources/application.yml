@@ -1,0 +1,18 @@
+# 本地 FCM 推送服务配置
+server:
+  # 只监听本机：服务账号能以你的名义给所有设备发推送，不要暴露到局域网
+  address: 127.0.0.1
+  port: 8090
+
+fcm:
+  # 服务账号私钥（Firebase 控制台 → 项目设置 → 服务账号 → 生成新的私钥）
+  # 可以用环境变量 FCM_CREDENTIALS 覆盖；也可以启动后在网页里填路径
+  credentials: ${FCM_CREDENTIALS:}
+  # 安卓通知渠道：与 HardwareLens 里的推送渠道 id 一致，后台通知才会用对渠道
+  android-channel-id: push
+  # 保存设备列表的文件
+  data-dir: ./data
+
+spring:
+  application:
+    name: fcm-push
